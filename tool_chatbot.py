@@ -14,6 +14,18 @@ run a tool once", we loop: keep resolving tool_use blocks and calling
 Claude again until it replies with no tool_use blocks left, which
 means it's ready to give you a real, final answer for that turn.
 
+Second new wrinkle: there are now TWO tools (calculate, and
+count_letter). Claude has to actually decide which one -- or
+neither -- fits the question. Because of that, the code can no longer
+assume every tool_use block means "call calculate()" -- it looks at
+block.name and dispatches to the matching function.
+
+count_letter exists for the same reason calculate does: it's a case
+where guessing in text is genuinely unreliable. LLMs process text as
+chunks ("tokens"), not one letter at a time, which is why they're
+famously bad at questions like "how many r's are in strawberry" --
+a real function that just loops over the string gets it right every time.
+
 Run with:
     python tool_chatbot.py
 """
@@ -42,6 +54,19 @@ def calculate(a, b, operation):
         return f"Unknown operation: {operation}"
 
 
+def count_letter(text, letter):
+    """Count exact occurrences of `letter` in `text` -- no guessing."""
+    return text.lower().count(letter.lower())
+
+
+# Mapping from tool name -> the real Python function that handles it.
+# When a tool_use block comes back, we look up block.name in here to
+# find out which function to actually run.
+tool_functions = {
+    "calculate": calculate,
+    "count_letter": count_letter,
+}
+
 tools = [
     {
         "name": "calculate",
@@ -59,13 +84,25 @@ tools = [
             },
             "required": ["a", "b", "operation"],
         },
-    }
+    },
+    {
+        "name": "count_letter",
+        "description": "Count how many times a specific letter appears in a word or phrase.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "The word or phrase to search"},
+                "letter": {"type": "string", "description": "The single letter to count"},
+            },
+            "required": ["text", "letter"],
+        },
+    },
 ]
 
 conversation = []
 
 print("=== Tool-Using Chatbot ===")
-print("Type a message (try some math). Type 'quit' to stop.\n")
+print("Type a message (try some math, or 'how many r's in strawberry'). Type 'quit' to stop.\n")
 
 while True:
     user_input = input("You: ")
@@ -104,7 +141,8 @@ while True:
         tool_results = []
         for block in tool_use_blocks:
             print(f"\n[calling {block.name}({block.input})]")
-            result = calculate(**block.input)
+            function_to_call = tool_functions[block.name]
+            result = function_to_call(**block.input)
             tool_results.append(
                 {
                     "type": "tool_result",
