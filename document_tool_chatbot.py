@@ -14,12 +14,19 @@ from the document, call a tool, or say "that's not in the document."
 Nothing here is new mechanically -- it's the exact same tool-resolution
 loop from tool_chatbot.py, just with a system prompt added on top.
 
-New tool: save_note. calculate and count_letter are both *pure*
-functions -- same inputs always produce the same output, and nothing
-about the world changes when you call them. save_note is different: it
-has a side effect (it actually writes to a real file, notes.txt). This
-is a small step toward what real agents do -- take actions that change
-state, not just answer questions.
+New tools: save_note and list_notes. calculate and count_letter are both
+*pure* functions -- same inputs always produce the same output, and
+nothing about the world changes when you call them. save_note is
+different: it has a side effect (it actually writes to a real file,
+notes.txt). This is a small step toward what real agents do -- take
+actions that change state, not just answer questions.
+
+list_notes shows why that distinction matters: it takes no arguments
+at all (an empty input_schema is valid), and it has to re-read
+notes.txt fresh every time it's called, because that file's contents
+can change mid-conversation. Contrast with the resume document, which
+is loaded once into the system prompt and never rechecked -- a static
+snapshot vs. live state.
 
 Run with:
     python document_tool_chatbot.py
@@ -46,8 +53,8 @@ available tool can help either, say "That's not in the document"
 instead of guessing or using outside knowledge.
 
 You also have tools available for exact calculations, letter counting,
-or saving a note. Use them whenever a question or request needs one,
-even if it isn't about the document.
+saving a note, or listing saved notes. Use them whenever a question or
+request needs one, even if it isn't about the document.
 
 DOCUMENT:
 {document_text}
@@ -81,10 +88,22 @@ def save_note(text):
     return f"Saved: {text}"
 
 
+def list_notes():
+    """Read notes.txt fresh, right now -- unlike the resume document
+    (loaded once at startup), this file can change mid-conversation,
+    so we have to actually check it each time instead of trusting
+    whatever Claude remembers writing earlier."""
+    if not os.path.exists("notes.txt"):
+        return "No notes saved yet."
+    with open("notes.txt", "r", encoding="utf-8") as f:
+        return f.read()
+
+
 tool_functions = {
     "calculate": calculate,
     "count_letter": count_letter,
     "save_note": save_note,
+    "list_notes": list_notes,
 }
 
 tools = [
@@ -126,6 +145,14 @@ tools = [
                 "text": {"type": "string", "description": "The note text to save"},
             },
             "required": ["text"],
+        },
+    },
+    {
+        "name": "list_notes",
+        "description": "Read back every note saved so far in this session or earlier.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
         },
     },
 ]
