@@ -14,6 +14,13 @@ from the document, call a tool, or say "that's not in the document."
 Nothing here is new mechanically -- it's the exact same tool-resolution
 loop from tool_chatbot.py, just with a system prompt added on top.
 
+New tool: save_note. calculate and count_letter are both *pure*
+functions -- same inputs always produce the same output, and nothing
+about the world changes when you call them. save_note is different: it
+has a side effect (it actually writes to a real file, notes.txt). This
+is a small step toward what real agents do -- take actions that change
+state, not just answer questions.
+
 Run with:
     python document_tool_chatbot.py
 """
@@ -38,9 +45,9 @@ that's actually in the document -- if something isn't in there and no
 available tool can help either, say "That's not in the document"
 instead of guessing or using outside knowledge.
 
-You also have tools available for exact calculations or letter
-counting. Use them whenever a question needs one, even if the
-question itself isn't about the document.
+You also have tools available for exact calculations, letter counting,
+or saving a note. Use them whenever a question or request needs one,
+even if it isn't about the document.
 
 DOCUMENT:
 {document_text}
@@ -66,9 +73,18 @@ def count_letter(text, letter):
     return text.lower().count(letter.lower())
 
 
+def save_note(text):
+    """Append a note to notes.txt -- a real side effect, unlike the
+    other two tools above."""
+    with open("notes.txt", "a", encoding="utf-8") as f:
+        f.write(text + "\n")
+    return f"Saved: {text}"
+
+
 tool_functions = {
     "calculate": calculate,
     "count_letter": count_letter,
+    "save_note": save_note,
 }
 
 tools = [
@@ -99,6 +115,17 @@ tools = [
                 "letter": {"type": "string", "description": "The single letter to count"},
             },
             "required": ["text", "letter"],
+        },
+    },
+    {
+        "name": "save_note",
+        "description": "Save a short note for later by appending it to a notes file.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "text": {"type": "string", "description": "The note text to save"},
+            },
+            "required": ["text"],
         },
     },
 ]
